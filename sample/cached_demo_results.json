@@ -1,0 +1,361 @@
+{
+  "grounding_water_body": {
+    "task": "grounding",
+    "query": "water body",
+    "answer": "Located 2 region(s) matching query: 'water body'.",
+    "confidence": 0.9,
+    "visual_evidence": {
+      "evidence_type": "boxes",
+      "description": "Grounded 2 region(s) for 'water body'",
+      "has_mask": false,
+      "mask_shape": null,
+      "box_count": 2,
+      "preview_shape": [
+        256,
+        256,
+        3
+      ]
+    },
+    "spatial_data": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  500006.2800000608,
+                  5197438.839874268
+                ],
+                [
+                  502561.1601257324,
+                  5197438.839874268
+                ],
+                [
+                  502561.1601257324,
+                  5199993.719999939
+                ],
+                [
+                  500006.2800000608,
+                  5199993.719999939
+                ],
+                [
+                  500006.2800000608,
+                  5197438.839874268
+                ]
+              ]
+            ]
+          },
+          "properties": {
+            "label": "water body",
+            "score": 0.88,
+            "pixel_box": [
+              0.12800000607967377,
+              0.12800000607967377,
+              255.6160125732422,
+              255.6160125732422
+            ],
+            "geo_coordinates": {
+              "min_lon": 500006.2800000608,
+              "max_lat": 5199993.719999939,
+              "max_lon": 502561.1601257324,
+              "min_lat": 5197438.839874268
+            }
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  500497.80002593994,
+                  5198485.879974365
+                ],
+                [
+                  501014.9200439453,
+                  5198485.879974365
+                ],
+                [
+                  501014.9200439453,
+                  5199499.639968872
+                ],
+                [
+                  500497.80002593994,
+                  5199499.639968872
+                ],
+                [
+                  500497.80002593994,
+                  5198485.879974365
+                ]
+              ]
+            ]
+          },
+          "properties": {
+            "label": "water body",
+            "score": 0.88,
+            "pixel_box": [
+              49.53600311279297,
+              49.28000259399414,
+              150.91200256347656,
+              100.99200439453125
+            ],
+            "geo_coordinates": {
+              "min_lon": 500497.80002593994,
+              "max_lat": 5199499.639968872,
+              "max_lon": 501014.9200439453,
+              "min_lat": 5198485.879974365
+            }
+          }
+        }
+      ]
+    },
+    "execution_trace": [
+      {
+        "step": "geospatial_rgb_stretch",
+        "status": "completed",
+        "time_ms": 638.8
+      },
+      {
+        "step": "florence2_phrase_grounding",
+        "status": "completed",
+        "time_ms": 638.8
+      },
+      {
+        "step": "pixel_to_geo_projection",
+        "status": "completed",
+        "time_ms": 638.8
+      }
+    ]
+  },
+  "caption_scene": {
+    "task": "caption",
+    "query": "Describe the scene",
+    "answer": "The image shows a black square in the middle of a colorful background, with a black border surrounding it. The black square is the focal point of the image, surrounded by a multitude of vibrant colors that create a mesmerizing effect.",
+    "confidence": 0.94,
+    "detected_features": [
+      "scene context",
+      "satellite visual elements"
+    ],
+    "visual_evidence": {
+      "evidence_type": "preview",
+      "description": "",
+      "has_mask": false,
+      "mask_shape": null,
+      "box_count": 0,
+      "preview_shape": [
+        256,
+        256,
+        3
+      ]
+    },
+    "spatial_data": {
+      "type": "FeatureCollection",
+      "features": []
+    },
+    "execution_trace": [
+      {
+        "step": "radiometric_stretch",
+        "status": "completed",
+        "time_ms": 240.8
+      },
+      {
+        "step": "florence2_detailed_caption",
+        "status": "completed",
+        "time_ms": 240.8
+      }
+    ]
+  },
+  "vqa_land_cover": {
+    "task": "vqa",
+    "query": "What is the predominant land cover in this area?",
+    "answer": "The predominant land cover is vegetation / forest canopy. (Visual Context: The image shows a black square in the middle of a colorful background, with a black border surrounding it. The black square is the focal point of the image, surrounded by a multitude of vibrant colors that create a mesmerizing effect.)",
+    "confidence": 0.92,
+    "visual_evidence": {
+      "evidence_type": "preview",
+      "description": "",
+      "has_mask": false,
+      "mask_shape": null,
+      "box_count": 0,
+      "preview_shape": [
+        256,
+        256,
+        3
+      ]
+    },
+    "spatial_data": {
+      "type": "FeatureCollection",
+      "features": []
+    },
+    "execution_trace": [
+      {
+        "step": "geospatial_rgb_stretch",
+        "status": "completed",
+        "time_ms": 156.3
+      },
+      {
+        "step": "florence2_scene_perception",
+        "status": "completed",
+        "time_ms": 156.3
+      },
+      {
+        "step": "spectral_reasoning_fusion",
+        "status": "completed",
+        "time_ms": 156.3
+      }
+    ]
+  },
+  "change_detection": {
+    "task": "change_detection",
+    "query": "Bi-temporal change analysis",
+    "answer": "Moderate localized change observed across 5.04% of the scene, identifying 1 distinct modified zones. Pattern consistent with agricultural cycles, cleared parcels, or surface modification. [Addressed Query: 'Find new construction between T1 and T2']",
+    "confidence": 0.88,
+    "change_percentage": 5.04,
+    "clusters_detected": 1,
+    "visual_evidence": {
+      "evidence_type": "mask",
+      "description": "Change mask covering 5.04% surface modification across 1 clusters",
+      "has_mask": true,
+      "mask_shape": [
+        256,
+        256
+      ],
+      "box_count": 1,
+      "preview_shape": [
+        256,
+        256,
+        3
+      ]
+    },
+    "spatial_data": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  501005.0,
+                  5198395.0
+                ],
+                [
+                  501605.0,
+                  5198395.0
+                ],
+                [
+                  501605.0,
+                  5198995.0
+                ],
+                [
+                  501005.0,
+                  5198995.0
+                ],
+                [
+                  501005.0,
+                  5198395.0
+                ]
+              ]
+            ]
+          },
+          "properties": {
+            "label": "detected_change_zone",
+            "score": 0.754,
+            "pixel_box": [
+              100.0,
+              100.0,
+              160.0,
+              160.0
+            ],
+            "geo_coordinates": {
+              "min_lon": 501005.0,
+              "max_lat": 5198995.0,
+              "max_lon": 501605.0,
+              "min_lat": 5198395.0
+            }
+          }
+        }
+      ]
+    },
+    "execution_trace": [
+      {
+        "step": "validate_spatial_compatibility",
+        "status": "completed",
+        "time_ms": 3.7
+      },
+      {
+        "step": "compute_spectral_difference",
+        "status": "completed",
+        "time_ms": 3.7
+      },
+      {
+        "step": "otsu_thresholding: value=83.0",
+        "status": "completed",
+        "time_ms": 3.7
+      },
+      {
+        "step": "extract_change_bounding_boxes",
+        "status": "completed",
+        "time_ms": 3.7
+      }
+    ]
+  },
+  "optical_sar_analysis": {
+    "task": "optical_sar",
+    "query": "Optical + SAR cross-modal analysis",
+    "answer": "Paired Optical+SAR analysis completed. Optical modality: multispectral, SAR modality: sar. Clear atmospheric conditions in optical scene (< 0.0% cloud coverage). Water bodies confirmed via cross-sensor agreement (9.6% coverage): exhibiting low optical reflectance and characteristic SAR specular reflection. Built-up / structural presence verified (4.4% coverage): evidenced by high SAR dihedral backscatter and structured optical edges. [Addressed Query: 'Assess flood impact and urban presence']",
+    "confidence": 0.9,
+    "complementary_insights": [
+      "Clear atmospheric conditions in optical scene (< 0.0% cloud coverage).",
+      "Water bodies confirmed via cross-sensor agreement (9.6% coverage): exhibiting low optical reflectance and characteristic SAR specular reflection.",
+      "Built-up / structural presence verified (4.4% coverage): evidenced by high SAR dihedral backscatter and structured optical edges."
+    ],
+    "optical_features": {
+      "mean_brightness": 118.63844807942708,
+      "cloud_coverage_pct": 0.0,
+      "modality": "multispectral"
+    },
+    "sar_features": {
+      "mean_backscatter_intensity": 58.82666015625,
+      "roughness_variance": 3740.9215219020844,
+      "modality": "sar"
+    },
+    "visual_evidence": {
+      "evidence_type": "composite",
+      "description": "False-color cross-sensor composite (Red: SAR Backscatter, Green: Optical Green, Blue: Optical Blue)",
+      "has_mask": false,
+      "mask_shape": null,
+      "box_count": 0,
+      "preview_shape": [
+        256,
+        256,
+        3
+      ]
+    },
+    "spatial_data": {
+      "type": "FeatureCollection",
+      "features": []
+    },
+    "execution_trace": [
+      {
+        "step": "validate_multimodal_pair",
+        "status": "completed",
+        "time_ms": 4.3
+      },
+      {
+        "step": "extract_cross_modal_features",
+        "status": "completed",
+        "time_ms": 4.3
+      },
+      {
+        "step": "synthesize_complementary_evidence",
+        "status": "completed",
+        "time_ms": 4.3
+      }
+    ]
+  }
+}

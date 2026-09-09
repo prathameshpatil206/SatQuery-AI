@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+.venv/
+
+# ML models / weights
+models/
+*.safetensors
+*.bin
+*.pt
+*.pth
+
+# Satellite imagery
+*.tif
+*.tiff
+*.jp2
+
+# Local data
+data/
+sample/*
+!sample/cached_demo_results.json
+
+# Environment variables
+.env
+
+# Jupyter
+.ipynb_checkpoints/
