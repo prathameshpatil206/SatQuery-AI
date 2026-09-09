@@ -90,11 +90,16 @@ STEP 3: THE EXACT CONTRACT EXPECTED BY ROHAN (FRONTEND)
 
 Rohan's Next.js frontend calls `POST /query` and directly renders:
 - `data.spatial_data` on Leaflet map: `L.geoJSON(data.spatial_data).addTo(map)`
-- `data.execution_trace` as an animated step list
-- `data.answer` in the chat bubble
+- `data.execution_trace` as an animated live step list
+- `data.answer` in the chat message bubble
 
-Here is the exact JSON structure your FastAPI endpoint MUST return:
+All functions return a dictionary adhering to this shared contract. 
 
+You can also inspect `sample/cached_demo_results.json` in this repository for full live samples of every task.
+
+---
+
+### Response Format 1: Grounding (Bounding Boxes -> GeoJSON)
 ```json
 {
   "task": "grounding",
@@ -105,7 +110,8 @@ Here is the exact JSON structure your FastAPI endpoint MUST return:
     "evidence_type": "boxes",
     "description": "Grounded 2 region(s) for 'water body'",
     "has_mask": false,
-    "box_count": 2
+    "box_count": 2,
+    "preview_shape": [256, 256, 3]
   },
   "spatial_data": {
     "type": "FeatureCollection",
@@ -116,27 +122,154 @@ Here is the exact JSON structure your FastAPI endpoint MUST return:
           "type": "Polygon",
           "coordinates": [
             [
-              [77.209, 28.613],
-              [77.215, 28.613],
-              [77.215, 28.618],
-              [77.209, 28.618],
-              [77.209, 28.613]
+              [500006.28, 5197438.84],
+              [502561.16, 5197438.84],
+              [502561.16, 5199993.72],
+              [500006.28, 5199993.72],
+              [500006.28, 5197438.84]
             ]
           ]
         },
         "properties": {
           "label": "water body",
           "score": 0.88,
-          "pixel_box": [50.0, 50.0, 150.0, 200.0]
+          "pixel_box": [0.13, 0.13, 255.62, 255.62],
+          "geo_coordinates": {
+            "min_lon": 500006.28,
+            "max_lat": 5199993.72,
+            "max_lon": 502561.16,
+            "min_lat": 5197438.84
+          }
         }
       }
     ]
   },
   "execution_trace": [
-    {"step": "Load GeoTIFF & extract CRS (EPSG:32632)", "status": "completed", "time_ms": 12.4},
-    {"step": "2%-98% radiometric contrast stretching", "status": "completed", "time_ms": 7.8},
-    {"step": "Florence-2 zero-shot grounding inference", "status": "completed", "time_ms": 135.2},
-    {"step": "Convert pixel bboxes to GeoJSON WGS84 coordinates", "status": "completed", "time_ms": 1.5}
+    {"step": "geospatial_rgb_stretch", "status": "completed", "time_ms": 12.1},
+    {"step": "florence2_phrase_grounding", "status": "completed", "time_ms": 145.3},
+    {"step": "pixel_to_geo_projection", "status": "completed", "time_ms": 1.2}
+  ]
+}
+```
+
+---
+
+### Response Format 2: Single-Image VQA & Captioning
+```json
+{
+  "task": "vqa",
+  "query": "What is the predominant land cover here?",
+  "answer": "The predominant land cover is vegetation / forest canopy. (Visual Context: The image shows agricultural parcels surrounded by dense green vegetation.)",
+  "confidence": 0.92,
+  "visual_evidence": {
+    "evidence_type": "preview",
+    "description": "Radiometrically calibrated RGB preview",
+    "has_mask": false,
+    "box_count": 0,
+    "preview_shape": [256, 256, 3]
+  },
+  "spatial_data": {
+    "type": "FeatureCollection",
+    "features": []
+  },
+  "execution_trace": [
+    {"step": "geospatial_rgb_stretch", "status": "completed", "time_ms": 8.0},
+    {"step": "florence2_scene_perception", "status": "completed", "time_ms": 110.4},
+    {"step": "spectral_reasoning_fusion", "status": "completed", "time_ms": 4.2}
+  ]
+}
+```
+
+---
+
+### Response Format 3: Bi-Temporal Change Detection
+```json
+{
+  "task": "change_detection",
+  "query": "Find new construction between T1 and T2",
+  "answer": "Moderate localized change observed across 5.04% of the scene, identifying 1 distinct modified zones. Pattern consistent with agricultural cycles, cleared parcels, or surface modification. [Addressed Query: 'Find new construction between T1 and T2']",
+  "confidence": 0.88,
+  "change_percentage": 5.04,
+  "clusters_detected": 1,
+  "visual_evidence": {
+    "evidence_type": "mask",
+    "description": "Change mask covering 5.04% surface modification across 1 clusters",
+    "has_mask": true,
+    "mask_shape": [256, 256],
+    "box_count": 1,
+    "preview_shape": [256, 256, 3]
+  },
+  "spatial_data": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [501000.0, 5198400.0],
+              [501600.0, 5198400.0],
+              [501600.0, 5199000.0],
+              [501000.0, 5199000.0],
+              [501000.0, 5198400.0]
+            ]
+          ]
+        },
+        "properties": {
+          "label": "detected_change_zone",
+          "score": 0.75,
+          "pixel_box": [100.0, 100.0, 160.0, 160.0]
+        }
+      }
+    ]
+  },
+  "execution_trace": [
+    {"step": "validate_spatial_compatibility", "status": "completed", "time_ms": 5.2},
+    {"step": "compute_spectral_difference", "status": "completed", "time_ms": 14.1},
+    {"step": "otsu_thresholding: value=83.0", "status": "completed", "time_ms": 3.4},
+    {"step": "extract_change_bounding_boxes", "status": "completed", "time_ms": 6.8}
+  ]
+}
+```
+
+---
+
+### Response Format 4: Optical + SAR Paired Analysis
+```json
+{
+  "task": "optical_sar",
+  "query": "Assess flood impact and urban presence",
+  "answer": "Paired Optical+SAR analysis completed. Optical modality: multispectral, SAR modality: sar. Clear atmospheric conditions in optical scene (< 0.0% cloud coverage). Water bodies confirmed via cross-sensor agreement (9.6% coverage): exhibiting low optical reflectance and characteristic SAR specular reflection. Built-up / structural presence verified (4.4% coverage): evidenced by high SAR dihedral backscatter and structured optical edges.",
+  "confidence": 0.90,
+  "complementary_insights": [
+    "Clear atmospheric conditions in optical scene (< 0.0% cloud coverage).",
+    "Water bodies confirmed via cross-sensor agreement (9.6% coverage): exhibiting low optical reflectance and characteristic SAR specular reflection.",
+    "Built-up / structural presence verified (4.4% coverage): evidenced by high SAR dihedral backscatter and structured optical edges."
+  ],
+  "optical_features": {
+    "mean_brightness": 118.6,
+    "cloud_coverage_pct": 0.0,
+    "modality": "multispectral"
+  },
+  "sar_features": {
+    "mean_backscatter_intensity": 68.2,
+    "roughness_variance": 1240.5,
+    "modality": "sar"
+  },
+  "visual_evidence": {
+    "evidence_type": "composite",
+    "description": "False-color cross-sensor composite (Red: SAR Backscatter, Green: Optical Green, Blue: Optical Blue)",
+    "preview_shape": [256, 256, 3]
+  },
+  "spatial_data": {
+    "type": "FeatureCollection",
+    "features": []
+  },
+  "execution_trace": [
+    {"step": "validate_multimodal_pair", "status": "completed", "time_ms": 4.1},
+    {"step": "extract_cross_modal_features", "status": "completed", "time_ms": 18.3},
+    {"step": "synthesize_complementary_evidence", "status": "completed", "time_ms": 5.7}
   ]
 }
 ```
