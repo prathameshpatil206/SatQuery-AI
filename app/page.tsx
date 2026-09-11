@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import dynamic from "next/dynamic";
 import {
   sendQuery,
+  fetchQueryHistory,
   QueryResponse,
+  HistoryRecord,
   TraceStep,
   USE_MOCK_FALLBACK,
 } from "@/lib/api";
@@ -35,9 +37,46 @@ export default function GeoAgentDashboard() {
   const [traces, setTraces] = useState<TraceStep[]>([]);
   const [spatialData, setSpatialData] = useState<GeoJSON.FeatureCollection | null>(null);
 
+  const [historyList, setHistoryList] = useState<HistoryRecord[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
   const primaryInputRef = useRef<HTMLInputElement>(null);
   const t2InputRef = useRef<HTMLInputElement>(null);
   const sarInputRef = useRef<HTMLInputElement>(null);
+
+  const loadHistory = async () => {
+    setLoadingHistory(true);
+    try {
+      const records = await fetchQueryHistory(20);
+      setHistoryList(records);
+    } catch (err) {
+      console.warn("Failed to load history:", err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  useEffect(() => {
+    loadHistory();
+  }, []);
+
+  const handleSelectHistory = (record: HistoryRecord) => {
+    setQuery(record.query_text);
+    setQueryResult({
+      task: record.task,
+      query: record.query_text,
+      answer: record.answer,
+      confidence: record.confidence,
+      visual_evidence: record.visual_evidence,
+      spatial_data: record.spatial_data,
+      execution_trace: record.execution_trace,
+      query_id: record.id,
+    });
+    setTraces(record.execution_trace || []);
+    setSpatialData(record.spatial_data);
+    setShowHistory(false);
+  };
 
   // Preset query chips specified in backend contract requirements
   const presetQueries = [
@@ -93,6 +132,7 @@ export default function GeoAgentDashboard() {
       setQueryResult(data);
       setTraces(data.execution_trace || []);
       setSpatialData(data.spatial_data);
+      loadHistory();
     } catch (err: any) {
       console.error("Query execution failed:", err);
       // Fallback display if mock flag was toggled off and backend unreachable
@@ -174,14 +214,96 @@ export default function GeoAgentDashboard() {
             </div>
           </div>
 
-          {/* Live Status Badge */}
-          <div className="flex items-center gap-2 bg-slate-950/80 border border-slate-800 px-3 py-1 rounded-full shadow-inner">
-            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-[11px] font-mono text-emerald-300 font-medium">
-              {USE_MOCK_FALLBACK ? "Mock Fallback Active" : "Backend Connected"}
-            </span>
+          {/* Header Controls: History & Status */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setShowHistory(!showHistory);
+                if (!showHistory) loadHistory();
+              }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-mono font-medium border transition-all flex items-center gap-1.5 ${
+                showHistory
+                  ? "bg-blue-600 text-white border-blue-400 shadow-md shadow-blue-500/20"
+                  : "bg-slate-950/80 text-slate-300 border-slate-800 hover:border-slate-700 hover:bg-slate-900"
+              }`}
+              title="View SQLite Query History"
+            >
+              <svg className="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>History</span>
+              {historyList.length > 0 && (
+                <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.2 rounded-full border border-blue-500/30">
+                  {historyList.length}
+                </span>
+              )}
+            </button>
+
+            {/* Live Status Badge */}
+            <div className="flex items-center gap-2 bg-slate-950/80 border border-slate-800 px-3 py-1 rounded-full shadow-inner">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[11px] font-mono text-emerald-300 font-medium">
+                {USE_MOCK_FALLBACK ? "Backend / Fallback Ready" : "Backend Connected"}
+              </span>
+            </div>
           </div>
         </header>
+
+        {/* Query History Overlay / Drawer */}
+        {showHistory && (
+          <div className="px-6 py-3 bg-slate-950 border-b border-slate-800 shadow-inner max-h-64 overflow-y-auto custom-scrollbar">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-blue-400 flex items-center gap-1.5">
+                <span>SQLite Query History</span>
+                <span className="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">
+                  {historyList.length} records
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={loadHistory}
+                disabled={loadingHistory}
+                className="text-[10px] font-mono text-slate-400 hover:text-blue-300 transition-colors"
+              >
+                {loadingHistory ? "Refreshing..." : "Refresh"}
+              </button>
+            </div>
+
+            {historyList.length === 0 ? (
+              <div className="text-center py-4 text-xs text-slate-500 font-mono">
+                No past queries recorded in SQLite database yet.
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {historyList.map((rec) => (
+                  <div
+                    key={rec.id}
+                    onClick={() => handleSelectHistory(rec)}
+                    className="p-2 bg-slate-900/90 border border-slate-800 hover:border-blue-500/60 rounded-xl cursor-pointer transition-all hover:bg-slate-850 flex flex-col gap-1 text-xs group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span className="px-1.5 py-0.5 text-[9px] font-mono rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase font-bold">
+                          {rec.task.replace("_", " ")}
+                        </span>
+                        <span className="text-[10px] font-mono text-slate-500">
+                          #{rec.id} • {new Date(rec.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-emerald-400 font-mono">
+                        {Math.round(rec.confidence * 100)}%
+                      </span>
+                    </div>
+                    <div className="text-slate-200 font-medium truncate group-hover:text-blue-300">
+                      {rec.query_text}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Scrollable Controls Container */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 custom-scrollbar">
@@ -469,6 +591,34 @@ export default function GeoAgentDashboard() {
               <div className="text-xs text-slate-200 leading-relaxed font-sans">
                 <p className="font-normal">{queryResult.answer}</p>
               </div>
+
+              {/* Visual Evidence Metadata */}
+              {queryResult.visual_evidence && (queryResult.visual_evidence.evidence_type || queryResult.visual_evidence.description) && (
+                <div className="bg-slate-950/70 rounded-xl p-2.5 border border-slate-800 flex flex-col gap-1.5 text-[11px] font-mono">
+                  <div className="flex justify-between items-center text-slate-400">
+                    <span className="text-slate-500 uppercase tracking-wider text-[9px]">Evidence Modality:</span>
+                    <span className="text-blue-400 font-semibold px-1.5 py-0.5 rounded bg-blue-500/10 border border-blue-500/20">
+                      {queryResult.visual_evidence.evidence_type}
+                    </span>
+                  </div>
+                  {queryResult.visual_evidence.description && (
+                    <div className="text-slate-300 text-[11px] font-sans leading-relaxed">
+                      {queryResult.visual_evidence.description}
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-3 text-[10px] text-slate-400 pt-1 border-t border-slate-800/80">
+                    {queryResult.visual_evidence.box_count !== undefined && queryResult.visual_evidence.box_count > 0 && (
+                      <span>Detections: <strong className="text-slate-200">{queryResult.visual_evidence.box_count}</strong></span>
+                    )}
+                    {queryResult.visual_evidence.has_mask && (
+                      <span>Mask: <strong className="text-emerald-400">Generated</strong></span>
+                    )}
+                    {queryResult.spatial_data?.features && queryResult.spatial_data.features.length > 0 && (
+                      <span>GeoJSON Polygons: <strong className="text-blue-400">{queryResult.spatial_data.features.length}</strong></span>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Complementary Insights bullet list */}
               {queryResult.complementary_insights && queryResult.complementary_insights.length > 0 && (

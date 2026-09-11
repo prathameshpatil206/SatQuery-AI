@@ -95,28 +95,29 @@ export default function Map({ spatialData }: MapProps) {
     if (!feature || !feature.properties) return;
 
     const props = feature.properties;
+    const scoreVal = props.confidence ?? props.score;
     const popupContent = `
       <div style="font-family: ui-sans-serif, system-ui, sans-serif; font-size: 12px; color: #f1f5f9; background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; min-width: 220px;">
         <div style="font-weight: 700; color: #60a5fa; font-size: 13px; margin-bottom: 6px; border-bottom: 1px solid #1e293b; padding-bottom: 4px;">
-          ${props.name || "Remote Sensing Detected Polygon"}
+          ${props.name || props.label || "Remote Sensing Detected Polygon"}
         </div>
         <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
           <span style="color: #94a3b8;">Region:</span>
-          <span style="font-weight: 500; color: #e2e8f0;">${props.region || "Hubli, Karnataka"}</span>
+          <span style="font-weight: 500; color: #e2e8f0;">${props.region || "Hubli AOI"}</span>
         </div>
         <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
           <span style="color: #94a3b8;">Classification:</span>
-          <span style="font-weight: 600; color: #38bdf8;">${props.classification || "Segmented Feature"}</span>
+          <span style="font-weight: 600; color: #38bdf8;">${props.classification || props.label || "Segmented Feature"}</span>
         </div>
         ${props.area_sq_km ? `
         <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
           <span style="color: #94a3b8;">Area Extent:</span>
           <span style="font-weight: 600; color: #34d399;">${props.area_sq_km} km²</span>
         </div>` : ""}
-        ${props.confidence ? `
+        ${scoreVal !== undefined ? `
         <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
           <span style="color: #94a3b8;">Confidence:</span>
-          <span style="font-weight: 600; color: #facc15;">${Math.round(props.confidence * 100)}%</span>
+          <span style="font-weight: 600; color: #facc15;">${Math.round(scoreVal * 100)}%</span>
         </div>` : ""}
         ${props.sensor ? `
         <div style="font-size: 10px; color: #64748b; margin-top: 6px; border-top: 1px solid #1e293b; padding-top: 4px;">

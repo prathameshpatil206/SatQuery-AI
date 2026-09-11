@@ -28,6 +28,20 @@ export interface QueryResponse {
   change_percentage?: number;
   clusters_detected?: number;
   complementary_insights?: string[];
+  query_id?: number;
+}
+
+export interface HistoryRecord {
+  id: number;
+  timestamp: string;
+  query_text: string;
+  task: TaskType;
+  answer: string;
+  confidence: number;
+  spatial_data: GeoJSON.FeatureCollection | null;
+  visual_evidence: VisualEvidence;
+  execution_trace: TraceStep[];
+  image_metadata?: Record<string, any>;
 }
 
 // Fallback mock mode flag: If true, resolves with mock satellite GeoJSON
@@ -232,5 +246,20 @@ export async function sendQuery(
       return getMockQueryResponse(queryText, Boolean(imageT2), Boolean(imageSar));
     }
     throw err;
+  }
+}
+
+/**
+ * Retrieves persisted query history from SQLite backend at /history.
+ */
+export async function fetchQueryHistory(limit: number = 25): Promise<HistoryRecord[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/history?limit=${limit}`);
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.history || [];
+  } catch (err) {
+    console.warn("Failed to fetch query history:", err);
+    return [];
   }
 }
