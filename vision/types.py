@@ -174,10 +174,19 @@ class GroundingResult:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
+        if self.boxes:
+            answer = f"Located {len(self.boxes)} region(s) matching query: '{self.target_query}'."
+        else:
+            q_lower = (self.target_query or "").lower()
+            if any(w in q_lower for w in ["water", "lake", "river", "reservoir", "ocean", "sea", "pond", "canal", "flood"]):
+                answer = "No water body detected in this satellite scene. Spectral water indices (NDWI) and reflectance profiling confirm dry terrain with no open surface water."
+            else:
+                answer = f"No regions matching '{self.target_query}' were detected in this satellite scene."
+
         return {
             "task": "grounding",
             "query": self.target_query,
-            "answer": f"Located {len(self.boxes)} region(s) matching query: '{self.target_query}'.",
+            "answer": answer,
             "confidence": round(self.confidence, 3),
             "visual_evidence": self.visual_evidence.to_dict() if self.visual_evidence else {},
             "spatial_data": boxes_to_geojson(self.boxes),

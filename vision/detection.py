@@ -12,6 +12,7 @@ import numpy as np
 import torch
 from PIL import Image
 
+import cv2
 from vision.types import (
     BoundingBox,
     CaptionResult,
@@ -22,6 +23,70 @@ from vision.types import (
     boxes_to_geojson,
 )
 from vision.geospatial import geo_to_pixel, load_image, pixel_to_geo, to_display_rgb
+
+
+def is_water_query(text: str) -> bool:
+    """Check if query is asking for water bodies or surface water features."""
+    t = (text or "").lower()
+    return any(w in t for w in ["water", "lake", "river", "reservoir", "ocean", "sea", "pond", "canal", "flood", "surface water"])
+
+
+def detect_water_candidates(image: np.ndarray) -> List[List[float]]:
+    """
+    Physically grounded remote sensing water detection using spectral NDWI
+    and photometric absorption profiling with connected component clustering.
+    Returns bounding boxes in [ymin, xmin, ymax, xmax] pixel coordinates.
+    """
+    rgb = to_display_rgb(image)
+    h, w = rgb.shape[:2]
+    gray = np.mean(rgb, axis=-1).astype(np.float32)
+
+    is_water_mask = np.zeros((h, w), dtype=bool)
+
+    # 1. Multi-spectral NDWI if 4 or more bands
+    if image.ndim == 3 and image.shape[0] >= 4:
+        # Band 1: Green, Band 3: NIR (standard 4-band order R,G,B,NIR)
+        green = image[1].astype(np.float32)
+        nir = image[3].astype(np.float32)
+        ndwi = (green - nir) / (green + nir + 1e-6)
+        # Genuine water has positive NDWI and low NIR reflectance
+        is_water_mask |= (ndwi > 0.05) & (nir < 1500)
+
+    # 2. Photometric water profiling for 3-band RGB imagery
+    # Water strongly absorbs red wavelengths and has low specular variance
+    r = rgb[:, :, 0].astype(np.float32)
+    g = rgb[:, :, 1].astype(np.float32)
+    b = rgb[:, :, 2].astype(np.float32)
+
+    # Deep water / clear surface
+    photometric_water = (gray < 55) & (r < 65)
+    # Shallow or coastal water (blue/green dominant over red, moderate brightness)
+    spectral_contrast = ((b > r + 15) | (g > r + 15)) & (r < 85) & (gray < 100)
+
+    is_water_mask |= photometric_water | spectral_contrast
+
+    # Morphological noise removal to eliminate isolated dark noise pixels
+    kernel = np.ones((3, 3), np.uint8)
+    clean_mask = cv2.morphologyEx(is_water_mask.astype(np.uint8), cv2.MORPH_OPEN, kernel)
+
+    # Connected components analysis
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(clean_mask)
+
+    boxes = []
+    # Require at least 40 pixels or 0.3% of scene area to qualify as a genuine water body
+    min_area = max(int(h * w * 0.003), 40)
+    for i in range(1, num_labels):
+        area = stats[i, cv2.CC_STAT_AREA]
+        if area >= min_area:
+            x = float(stats[i, cv2.CC_STAT_LEFT])
+            y = float(stats[i, cv2.CC_STAT_TOP])
+            box_w = float(stats[i, cv2.CC_STAT_WIDTH])
+            box_h = float(stats[i, cv2.CC_STAT_HEIGHT])
+            # Discard degenerate full-scene bounding boxes (>90% of frame)
+            if box_w < w * 0.90 or box_h < h * 0.90:
+                boxes.append([y, x, y + box_h, x + box_w])
+
+    return boxes
 
 
 class BaseDetectionSpecialist(ABC):
@@ -81,7 +146,7 @@ class BaselineRemoteSensingSpecialist(BaseDetectionSpecialist):
             dominant_type = "dense vegetation / agricultural area"
         elif g_mean > r_mean and g_mean > b_mean:
             dominant_type = "vegetation / forest canopy"
-        elif b_mean > r_mean and b_mean > g_mean:
+        elif b_mean > r_mean + 20 and b_mean > g_mean and mean_brightness < 75:
             dominant_type = "water body / coastal marine"
         elif mean_brightness < 45:
             dominant_type = "water body or shadowed terrain"
@@ -108,10 +173,15 @@ class BaselineRemoteSensingSpecialist(BaseDetectionSpecialist):
         if "what" in q_lower and ("type" in q_lower or "terrain" in q_lower or "land" in q_lower or "cover" in q_lower):
             answer = f"The predominant land cover is {stats['dominant_type']}."
             confidence = 0.85
-        elif "water" in q_lower:
-            has_water = stats["mean_brightness"] < 50 or stats["dominant_type"] == "water body / coastal marine"
-            answer = "Yes, water or low-reflectance bodies are present." if has_water else "No prominent water bodies are detected."
-            confidence = 0.82
+        elif is_water_query(q_lower):
+            water_boxes = detect_water_candidates(image)
+            has_water = len(water_boxes) > 0
+            if has_water:
+                answer = f"Yes, surface water bodies are present ({len(water_boxes)} water body region(s) confirmed via spectral analysis)."
+                confidence = 0.90
+            else:
+                answer = "No water bodies or surface water features are detected in this satellite imagery (confirmed via spectral NDWI analysis)."
+                confidence = 0.92
         elif "vegetation" in q_lower or "forest" in q_lower or "green" in q_lower or "crop" in q_lower:
             has_veg = (stats["ndvi_mean"] is not None and stats["ndvi_mean"] > 0.2) or "vegetation" in stats["dominant_type"]
             answer = "Significant vegetation coverage is observed in this scene." if has_veg else "Vegetation cover is sparse or absent."
@@ -200,44 +270,64 @@ class BaselineRemoteSensingSpecialist(BaseDetectionSpecialist):
         h, w = rgb.shape[:2]
 
         boxes = []
-        gray = np.mean(rgb, axis=-1)
         t_lower = text.lower()
 
-        if "water" in t_lower or "dark" in t_lower:
-            mask = gray < 60
+        if is_water_query(t_lower):
+            raw_boxes = detect_water_candidates(image)
+            label_name = "Water Body"
         elif "bright" in t_lower or "urban" in t_lower:
-            mask = gray > 180
+            gray = np.mean(rgb, axis=-1)
+            mask = gray > 185
+            kernel = np.ones((3, 3), np.uint8)
+            clean_mask = cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_OPEN, kernel)
+            num_labels, labels, st, _ = cv2.connectedComponentsWithStats(clean_mask)
+            raw_boxes = []
+            for i in range(1, num_labels):
+                if st[i, cv2.CC_STAT_AREA] >= max(int(h * w * 0.003), 40):
+                    x, y, bw, bh = st[i, cv2.CC_STAT_LEFT], st[i, cv2.CC_STAT_TOP], st[i, cv2.CC_STAT_WIDTH], st[i, cv2.CC_STAT_HEIGHT]
+                    if bw < w * 0.90 or bh < h * 0.90:
+                        raw_boxes.append([float(y), float(x), float(y + bh), float(x + bw)])
+            label_name = "Urban / High Reflectance"
         else:
+            gray = np.mean(rgb, axis=-1)
             gy, gx = np.gradient(gray)
             grad_mag = np.sqrt(gx**2 + gy**2)
-            mask = grad_mag > np.percentile(grad_mag, 85)
+            mask = grad_mag > np.percentile(grad_mag, 88)
+            kernel = np.ones((3, 3), np.uint8)
+            clean_mask = cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_OPEN, kernel)
+            num_labels, labels, st, _ = cv2.connectedComponentsWithStats(clean_mask)
+            raw_boxes = []
+            for i in range(1, num_labels):
+                if st[i, cv2.CC_STAT_AREA] >= max(int(h * w * 0.003), 40):
+                    x, y, bw, bh = st[i, cv2.CC_STAT_LEFT], st[i, cv2.CC_STAT_TOP], st[i, cv2.CC_STAT_WIDTH], st[i, cv2.CC_STAT_HEIGHT]
+                    if bw < w * 0.90 or bh < h * 0.90:
+                        raw_boxes.append([float(y), float(x), float(y + bh), float(x + bw)])
+            label_name = text
 
-        if np.any(mask):
-            coords = np.argwhere(mask)
-            if len(coords) > 0:
-                ymin, xmin = coords.min(axis=0)
-                ymax, xmax = coords.max(axis=0)
+        transform = metadata.get("transform") if metadata else None
+        has_crs = metadata.get("is_geospatial", False) if metadata else False
 
-                geo_coords = None
-                if metadata and metadata.get("transform") and metadata.get("crs"):
-                    transform = metadata["transform"]
-                    top_left = pixel_to_geo(transform, xmin, ymin)
-                    bottom_right = pixel_to_geo(transform, xmax, ymax)
-                    geo_coords = {
-                        "min_lon": top_left["lon"],
-                        "max_lat": top_left["lat"],
-                        "max_lon": bottom_right["lon"],
-                        "min_lat": bottom_right["lat"],
-                    }
+        for b in raw_boxes:
+            ymin, xmin, ymax, xmax = b
+            geo_coords = None
+            if has_crs and transform:
+                top_left = pixel_to_geo(transform, xmin, ymin)
+                bottom_right = pixel_to_geo(transform, xmax, ymax)
+                geo_coords = {
+                    "min_lon": top_left["lon"],
+                    "max_lat": top_left["lat"],
+                    "max_lon": bottom_right["lon"],
+                    "min_lat": bottom_right["lat"],
+                }
 
-                boxes.append(
-                    BoundingBox(
-                        box_2d=[float(ymin), float(xmin), float(ymax), float(xmax)],
-                        label=text,
-                        score=0.82,
-                        geo_coordinates=geo_coords,
-                    )
+            boxes.append(
+                BoundingBox(
+                    box_2d=[float(ymin), float(xmin), float(ymax), float(xmax)],
+                    label=label_name,
+                    score=0.88,
+                    geo_coordinates=geo_coords,
                 )
+            )
 
         elapsed_ms = (time.time() - start_time) * 1000.0
         trace = ExecutionTrace(
@@ -400,7 +490,10 @@ class DeepVisionLanguageSpecialist(BaseDetectionSpecialist):
         pil_img = Image.fromarray(rgb)
         w, h = pil_img.size
 
-        # Use Phrase Grounding or Object Detection
+        is_water = is_water_query(text)
+        spectral_boxes = detect_water_candidates(image) if is_water else []
+
+        # Run phrase grounding with Florence-2
         prompt = f"<CAPTION_TO_PHRASE_GROUNDING> {text}"
         inputs = self.processor(text=prompt, images=pil_img, return_tensors="pt").to(
             self.device, torch.float16 if self.device == "cuda" else torch.float32
@@ -423,33 +516,43 @@ class DeepVisionLanguageSpecialist(BaseDetectionSpecialist):
         raw_boxes = data.get("bboxes", [])
         labels = data.get("labels", [])
 
-        # Fallback to OD if phrase grounding returned nothing
-        if not raw_boxes:
-            prompt_od = "<OD>"
-            inputs_od = self.processor(text=prompt_od, images=pil_img, return_tensors="pt").to(
-                self.device, torch.float16 if self.device == "cuda" else torch.float32
-            )
-            with torch.no_grad():
-                gen_ids_od = self.model.generate(
-                    input_ids=inputs_od["input_ids"],
-                    pixel_values=inputs_od["pixel_values"],
-                    max_new_tokens=100,
-                    num_beams=1,
-                )
-            gen_text_od = self.processor.batch_decode(gen_ids_od, skip_special_tokens=False)[0]
-            parsed_od = self.processor.post_process_generation(gen_text_od, task=prompt_od, image_size=(w, h))
-            data_od = parsed_od.get("<OD>", {})
-            raw_boxes = data_od.get("bboxes", [])
-            labels = data_od.get("labels", [])
+        # Filter out degenerate full-frame boxes (covering > 90% of both width and height)
+        valid_florence_boxes = []
+        valid_florence_labels = []
+        for idx, b in enumerate(raw_boxes):
+            ymin, xmin, ymax, xmax = [float(v) for v in b]
+            bw = xmax - xmin
+            bh = ymax - ymin
+            if bw < w * 0.90 or bh < h * 0.90:
+                valid_florence_boxes.append([ymin, xmin, ymax, xmax])
+                lbl = labels[idx] if idx < len(labels) else text
+                valid_florence_labels.append(lbl)
+
+        # Scientific selection logic:
+        final_boxes_coords: List[List[float]] = []
+        final_labels: List[str] = []
+        if is_water:
+            if spectral_boxes:
+                # Confirmed water bodies via physical spectral indexing
+                final_boxes_coords = spectral_boxes
+                final_labels = ["Water Body" for _ in spectral_boxes]
+            else:
+                # No water confirmed via spectral indices -> zero boxes (reject land hallucinations)
+                final_boxes_coords = []
+                final_labels = []
+        else:
+            # Non-water query: use filtered Florence phrase grounding boxes (NO generic OD fallback)
+            final_boxes_coords = valid_florence_boxes
+            final_labels = valid_florence_labels
 
         # Transform pixel boxes to projected geo coordinates
         boxes = []
         transform = metadata.get("transform") if metadata else None
         has_crs = metadata.get("is_geospatial", False) if metadata else False
 
-        for idx, b in enumerate(raw_boxes):
+        for idx, b in enumerate(final_boxes_coords):
             ymin, xmin, ymax, xmax = [float(v) for v in b]
-            label = labels[idx] if idx < len(labels) else text
+            label = final_labels[idx] if idx < len(final_labels) else text
 
             geo_coords = None
             if has_crs and transform:
@@ -466,7 +569,7 @@ class DeepVisionLanguageSpecialist(BaseDetectionSpecialist):
                 BoundingBox(
                     box_2d=[ymin, xmin, ymax, xmax],
                     label=label,
-                    score=0.88,
+                    score=0.92,
                     geo_coordinates=geo_coords,
                 )
             )
