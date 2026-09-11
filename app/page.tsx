@@ -8,6 +8,7 @@ import {
   QueryResponse,
   HistoryRecord,
   TraceStep,
+  RasterOverlay,
   USE_MOCK_FALLBACK,
 } from "@/lib/api";
 
@@ -36,6 +37,7 @@ export default function GeoAgentDashboard() {
   const [queryResult, setQueryResult] = useState<QueryResponse | null>(null);
   const [traces, setTraces] = useState<TraceStep[]>([]);
   const [spatialData, setSpatialData] = useState<GeoJSON.FeatureCollection | null>(null);
+  const [rasterOverlay, setRasterOverlay] = useState<RasterOverlay | null>(null);
 
   const [historyList, setHistoryList] = useState<HistoryRecord[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -75,6 +77,7 @@ export default function GeoAgentDashboard() {
     });
     setTraces(record.execution_trace || []);
     setSpatialData(record.spatial_data);
+    setRasterOverlay(record.raster_overlay || null);
     setShowHistory(false);
   };
 
@@ -120,6 +123,7 @@ export default function GeoAgentDashboard() {
     setLoading(true);
     setQueryResult(null);
     setTraces([]);
+    setRasterOverlay(null);
 
     try {
       const data: QueryResponse = await sendQuery(
@@ -132,6 +136,7 @@ export default function GeoAgentDashboard() {
       setQueryResult(data);
       setTraces(data.execution_trace || []);
       setSpatialData(data.spatial_data);
+      setRasterOverlay(data.raster_overlay || null);
       loadHistory();
     } catch (err: any) {
       console.error("Query execution failed:", err);
@@ -592,9 +597,34 @@ export default function GeoAgentDashboard() {
                 <p className="font-normal">{queryResult.answer}</p>
               </div>
 
-              {/* Visual Evidence Metadata */}
-              {queryResult.visual_evidence && (queryResult.visual_evidence.evidence_type || queryResult.visual_evidence.description) && (
-                <div className="bg-slate-950/70 rounded-xl p-2.5 border border-slate-800 flex flex-col gap-1.5 text-[11px] font-mono">
+              {/* Visual Evidence Metadata & Raster Thumbnail */}
+              {queryResult.visual_evidence && (queryResult.visual_evidence.evidence_type || queryResult.visual_evidence.description || queryResult.visual_evidence.preview_data_url) && (
+                <div className="bg-slate-950/70 rounded-xl p-2.5 border border-slate-800 flex flex-col gap-2 text-[11px] font-mono">
+                  {/* Raster Preview Image from .tif */}
+                  {queryResult.visual_evidence.preview_data_url && (
+                    <div className="rounded-lg overflow-hidden border border-amber-500/30 bg-slate-900 flex flex-col">
+                      <div className="bg-amber-950/40 px-2.5 py-1 text-[10px] text-amber-300 font-medium flex items-center justify-between border-b border-amber-500/20">
+                        <span className="flex items-center gap-1.5">
+                          <span>🛰️ Active GeoTIFF:</span>
+                          <span className="text-slate-200">{queryResult.raster_overlay?.filename || "satellite_scene.tif"}</span>
+                        </span>
+                        {queryResult.raster_overlay?.dimensions && (
+                          <span className="text-slate-400">{queryResult.raster_overlay.dimensions}</span>
+                        )}
+                      </div>
+                      <div className="relative w-full h-40 bg-slate-950 flex items-center justify-center overflow-hidden">
+                        <img
+                          src={queryResult.visual_evidence.preview_data_url}
+                          alt="GeoTIFF Raster Scene"
+                          className="w-full h-full object-contain"
+                        />
+                        <div className="absolute bottom-1.5 right-1.5 bg-slate-900/90 text-amber-300 text-[9px] px-1.5 py-0.5 rounded border border-amber-500/30 backdrop-blur-sm">
+                          Raster Band Composite
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex justify-between items-center text-slate-400">
                     <span className="text-slate-500 uppercase tracking-wider text-[9px]">Evidence Modality:</span>
                     <span className="text-blue-400 font-semibold px-1.5 py-0.5 rounded bg-blue-500/10 border border-blue-500/20">
@@ -615,6 +645,9 @@ export default function GeoAgentDashboard() {
                     )}
                     {queryResult.spatial_data?.features && queryResult.spatial_data.features.length > 0 && (
                       <span>GeoJSON Polygons: <strong className="text-blue-400">{queryResult.spatial_data.features.length}</strong></span>
+                    )}
+                    {queryResult.raster_overlay && (
+                      <span className="text-amber-400">Raster Overlay: <strong>Active</strong></span>
                     )}
                   </div>
                 </div>
@@ -652,7 +685,7 @@ export default function GeoAgentDashboard() {
       {/* RIGHT PANEL: Full-Screen Leaflet Map (60% width)                          */}
       {/* ========================================================================= */}
       <div className="w-[60%] h-full relative overflow-hidden bg-slate-950">
-        <LeafletMap spatialData={spatialData} />
+        <LeafletMap spatialData={spatialData} rasterOverlay={rasterOverlay} />
       </div>
     </main>
   );

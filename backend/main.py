@@ -10,11 +10,14 @@ Exposes:
 """
 
 from contextlib import asynccontextmanager
+import base64
+import io
 import logging
 from pathlib import Path
 import shutil
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple, Union
 import uuid
+from PIL import Image
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,7 +30,7 @@ from backend.router import (
     load_cached_fallback,
     normalize_spatial_geojson,
 )
-from vision.geospatial import create_synthetic_geotiff, read_geotiff
+from vision.geospatial import create_synthetic_geotiff, load_image, read_geotiff, to_display_rgb
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -96,6 +99,46 @@ def _get_or_create_sample(name: str = "valid_sample.tif") -> Path:
     if not sample_path.exists():
         create_synthetic_geotiff(sample_path, width=256, height=256, bands=4)
     return sample_path
+
+
+def generate_raster_preview_and_overlay(
+    image_path: Union[str, Path],
+    footprint_feat: Optional[Dict[str, Any]],
+) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+    """
+    Convert satellite raster into a displayable base64 PNG data URL
+    and return geographic bounds for Leaflet ImageOverlay.
+    """
+    try:
+        arr, meta = load_image(image_path)
+        rgb = to_display_rgb(arr)
+        pil_img = Image.fromarray(rgb)
+        # Scale for fast browser rendering
+        pil_img.thumbnail((512, 512), Image.Resampling.LANCZOS)
+        buf = io.BytesIO()
+        pil_img.save(buf, format="PNG", optimize=True)
+        b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+        data_url = f"data:image/png;base64,{b64}"
+
+        overlay_info = None
+        if footprint_feat and "geometry" in footprint_feat:
+            coords = footprint_feat["geometry"].get("coordinates", [[]])[0]
+            if coords and len(coords) >= 4:
+                lons = [float(pt[0]) for pt in coords]
+                lats = [float(pt[1]) for pt in coords]
+                min_lat, max_lat = min(lats), max(lats)
+                min_lon, max_lon = min(lons), max(lons)
+                overlay_info = {
+                    "url": data_url,
+                    "bounds": [[min_lat, min_lon], [max_lat, max_lon]],
+                    "filename": Path(image_path).name,
+                    "dimensions": f"{meta.get('width', rgb.shape[1])} x {meta.get('height', rgb.shape[0])} px",
+                }
+
+        return data_url, overlay_info
+    except Exception as err:
+        logger.warning(f"Could not generate raster preview/overlay: {err}")
+        return None, None
 
 
 @app.get("/health")
@@ -207,7 +250,7 @@ async def process_query(
             response_data["spatial_data"] = normalize_spatial_geojson(
                 response_data.get("spatial_data"), crs_str=crs_str
             )
-            # Add scene footprint polygon representing the entire .tif image
+            # Add scene footprint polygon and real .tif raster overlay
             try:
                 active_img = primary_path or (img1 if detected_task == "change_detection" else (opt_img if detected_task == "optical_sar" else img))
                 if active_img:
@@ -218,13 +261,34 @@ async def process_query(
                         features_list = response_data["spatial_data"].get("features", [])
                         features_list.insert(0, footprint_feat)
                         response_data["spatial_data"]["features"] = features_list
+
+                    # Generate displayable base64 PNG and Leaflet ImageOverlay bounds
+                    preview_b64, overlay_info = generate_raster_preview_and_overlay(active_img, footprint_feat)
+                    if preview_b64:
+                        if "visual_evidence" not in response_data:
+                            response_data["visual_evidence"] = {}
+                        response_data["visual_evidence"]["preview_data_url"] = preview_b64
+                    if overlay_info:
+                        response_data["raster_overlay"] = overlay_info
             except Exception as fp_err:
-                logger.debug(f"Could not generate scene footprint: {fp_err}")
+                logger.debug(f"Could not generate scene footprint / raster overlay: {fp_err}")
 
     except Exception as err:
         logger.warning(f"Specialist execution warning, utilizing fail-safe demo fallback: {err}")
         # Graceful fallback to pre-cached response so UI never receives 500 error
         response_data = load_cached_fallback(detected_task, query)
+        try:
+            demo_img = SAMPLE_DIR / "valid_sample.tif"
+            if demo_img.exists():
+                _, demo_meta = read_geotiff(demo_img)
+                demo_fp = create_scene_footprint_feature(demo_meta, "valid_sample.tif")
+                b64, ov = generate_raster_preview_and_overlay(demo_img, demo_fp)
+                if b64 and "visual_evidence" in response_data:
+                    response_data["visual_evidence"]["preview_data_url"] = b64
+                if ov:
+                    response_data["raster_overlay"] = ov
+        except Exception:
+            pass
 
     # 5. Persist query transaction to SQLite database
     try:
@@ -232,6 +296,7 @@ async def process_query(
             "primary": str(primary_path) if primary_path else None,
             "t2": str(t2_path) if t2_path else None,
             "sar": str(sar_path) if sar_path else None,
+            "raster_overlay": response_data.get("raster_overlay"),
         }
         rec_id = log_query(
             query_text=query,

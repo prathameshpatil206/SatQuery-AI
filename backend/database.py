@@ -125,6 +125,7 @@ def get_recent_queries(limit: int = 25) -> List[Dict[str, Any]]:
         rows = cursor.fetchall()
         results = []
         for r in rows:
+            meta_dict = json.loads(r["image_metadata"]) if r["image_metadata"] else {}
             results.append({
                 "id": r["id"],
                 "timestamp": r["timestamp"],
@@ -135,7 +136,8 @@ def get_recent_queries(limit: int = 25) -> List[Dict[str, Any]]:
                 "spatial_data": json.loads(r["spatial_data"]) if r["spatial_data"] else None,
                 "visual_evidence": json.loads(r["visual_evidence"]) if r["visual_evidence"] else {},
                 "execution_trace": json.loads(r["execution_trace"]) if r["execution_trace"] else [],
-                "image_metadata": json.loads(r["image_metadata"]) if r["image_metadata"] else {},
+                "image_metadata": meta_dict,
+                "raster_overlay": meta_dict.get("raster_overlay"),
             })
         return results
     finally:
@@ -158,6 +160,7 @@ def get_query_by_id(query_id: int) -> Optional[Dict[str, Any]]:
         row = cursor.fetchone()
         if not row:
             return None
+        meta_dict = json.loads(row["image_metadata"]) if row["image_metadata"] else {}
         return {
             "id": row["id"],
             "timestamp": row["timestamp"],
@@ -168,7 +171,8 @@ def get_query_by_id(query_id: int) -> Optional[Dict[str, Any]]:
             "spatial_data": json.loads(row["spatial_data"]) if row["spatial_data"] else None,
             "visual_evidence": json.loads(row["visual_evidence"]) if row["visual_evidence"] else {},
             "execution_trace": json.loads(row["execution_trace"]) if row["execution_trace"] else [],
-            "image_metadata": json.loads(row["image_metadata"]) if row["image_metadata"] else {},
+            "image_metadata": meta_dict,
+            "raster_overlay": meta_dict.get("raster_overlay"),
         }
     finally:
         conn.close()

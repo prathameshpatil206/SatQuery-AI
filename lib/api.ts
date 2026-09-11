@@ -9,12 +9,20 @@ export interface TraceStep {
 
 export type TaskType = "grounding" | "vqa" | "caption" | "change_detection" | "optical_sar";
 
+export interface RasterOverlay {
+  url: string;
+  bounds: [[number, number], [number, number]];
+  filename?: string;
+  dimensions?: string;
+}
+
 export interface VisualEvidence {
   evidence_type: string;
   description: string;
   has_mask?: boolean;
   box_count?: number;
   preview_shape?: number[];
+  preview_data_url?: string;
 }
 
 export interface QueryResponse {
@@ -25,6 +33,7 @@ export interface QueryResponse {
   visual_evidence: VisualEvidence;
   spatial_data: GeoJSON.FeatureCollection | null;
   execution_trace: TraceStep[];
+  raster_overlay?: RasterOverlay;
   change_percentage?: number;
   clusters_detected?: number;
   complementary_insights?: string[];
@@ -41,6 +50,7 @@ export interface HistoryRecord {
   spatial_data: GeoJSON.FeatureCollection | null;
   visual_evidence: VisualEvidence;
   execution_trace: TraceStep[];
+  raster_overlay?: RasterOverlay;
   image_metadata?: Record<string, any>;
 }
 
@@ -71,10 +81,36 @@ function getMockQueryResponse(
     detectedTask = "vqa";
   }
 
-  // Polygon coordinates delineating Unkal Lake in Hubli, Karnataka (GeoJSON is [lon, lat])
+  // Polygon coordinates delineating Unkal Lake and its parent satellite scene footprint
   const unkalLakeFeatureCollection: GeoJSON.FeatureCollection = {
     type: "FeatureCollection",
     features: [
+      {
+        type: "Feature",
+        id: "scene-footprint-hubli",
+        properties: {
+          feature_type: "scene_footprint",
+          name: "🛰️ Scene Footprint: sentinel2_hubli_b04_b08.tif",
+          label: "Full .tif Scene Footprint",
+          classification: "Sentinel-2 MSI Extent (10m GSD)",
+          dimensions: "512 x 512 px",
+          sensor: "Copernicus Sentinel-2 Level-2A",
+          region: "Hubli Sector Grid",
+          crs: "EPSG:4326",
+        },
+        geometry: {
+          type: "Polygon",
+          coordinates: [
+            [
+              [75.105, 15.378],
+              [75.132, 15.378],
+              [75.132, 15.405],
+              [75.105, 15.405],
+              [75.105, 15.378],
+            ],
+          ],
+        },
+      },
       {
         type: "Feature",
         id: "hubli-waterbody-unkal-01",
@@ -106,6 +142,13 @@ function getMockQueryResponse(
     ],
   };
 
+  const defaultMockOverlay: RasterOverlay = {
+    url: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='512' height='512' viewBox='0 0 512 512'><rect width='512' height='512' fill='%2313271d' opacity='0.75'/><circle cx='230' cy='250' r='140' fill='%230f3f61' opacity='0.85'/><path d='M100 120 Q 200 180 320 140 T 480 300' stroke='%2322c55e' stroke-width='4' fill='none' opacity='0.5'/><text x='20' y='40' fill='%2338bdf8' font-size='18' font-family='monospace'>GeoTIFF Raster Layer [Hubli Scene]</text></svg>",
+    bounds: [[15.378, 75.105], [15.405, 75.132]],
+    filename: "sentinel2_hubli_b04_b08.tif",
+    dimensions: "512 x 512 px",
+  };
+
   if (detectedTask === "change_detection") {
     return {
       task: "change_detection",
@@ -121,8 +164,10 @@ function getMockQueryResponse(
         has_mask: true,
         box_count: 3,
         preview_shape: [512, 512, 3],
+        preview_data_url: defaultMockOverlay.url,
       },
       spatial_data: unkalLakeFeatureCollection,
+      raster_overlay: defaultMockOverlay,
       execution_trace: [
         { step: "Bi-Temporal Image Co-Registration", status: "COMPLETED", time_ms: 182 },
         { step: "Feature Extraction & Siamese Difference Encoding", status: "COMPLETED", time_ms: 410 },
@@ -151,8 +196,10 @@ function getMockQueryResponse(
         has_mask: true,
         box_count: 2,
         preview_shape: [512, 512, 4],
+        preview_data_url: defaultMockOverlay.url,
       },
       spatial_data: unkalLakeFeatureCollection,
+      raster_overlay: defaultMockOverlay,
       execution_trace: [
         { step: "Sentinel-1 GRD SAR Calibration & Terrain Flattening", status: "COMPLETED", time_ms: 240 },
         { step: "Optical-SAR Cross-Attention Fusion", status: "COMPLETED", time_ms: 465 },
@@ -181,8 +228,10 @@ function getMockQueryResponse(
       has_mask: true,
       box_count: 1,
       preview_shape: [512, 512, 1],
+      preview_data_url: defaultMockOverlay.url,
     },
     spatial_data: unkalLakeFeatureCollection,
+    raster_overlay: defaultMockOverlay,
     execution_trace: [
       { step: "Satellite Scene Ingestion & Metadata Parse", status: "COMPLETED", time_ms: 110 },
       { step: "Multi-Spectral NDWI Water Index Computation", status: "COMPLETED", time_ms: 360 },
@@ -222,7 +271,7 @@ export async function sendQuery(
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8-second network timeout
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60-second network timeout for remote-sensing AI inference
 
     const response = await fetch(`${API_BASE_URL}/query`, {
       method: "POST",
