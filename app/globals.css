@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #020617;
+  color: #f8fafc;
+  font-family: var(--font-inter), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overflow: hidden;
+}
+
+/* Custom sleek dark scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 9999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(51, 65, 85, 0.8);
+  border-radius: 9999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.9);
+}
+
+/* Leaflet Dark Popup Styles */
+.geoagent-dark-popup .leaflet-popup-content-wrapper {
+  background: #0f172a !important;
+  border: 1px solid #334155 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5) !important;
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.geoagent-dark-popup .leaflet-popup-content {
+  margin: 0 !important;
+  line-height: 1.4 !important;
+}
+
+.geoagent-dark-popup .leaflet-popup-tip {
+  background: #0f172a !important;
+  border: 1px solid #334155 !important;
+}
+
+.geoagent-dark-popup a.leaflet-popup-close-button {
+  color: #94a3b8 !important;
+  padding: 6px 8px 0 0 !important;
+}
+
+.geoagent-dark-popup a.leaflet-popup-close-button:hover {
+  color: #f1f5f9 !important;
+}
+
+/* Leaflet Zoom Control Styling */
+.leaflet-bar a {
+  background-color: #0f172a !important;
+  color: #94a3b8 !important;
+  border-bottom: 1px solid #334155 !important;
+  transition: all 0.15s ease;
+}
+
+.leaflet-bar a:hover {
+  background-color: #1e293b !important;
+  color: #60a5fa !important;
+}
+
+.leaflet-control-zoom {
+  border: 1px solid #334155 !important;
+  border-radius: 8px !important;
+  overflow: hidden;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Leaflet Attribution Styling */
+.leaflet-control-attribution {
+  background-color: rgba(15, 23, 42, 0.85) !important;
+  backdrop-filter: blur(4px);
+  color: #64748b !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-size: 10px !important;
+  padding: 2px 8px !important;
+  border-top-left-radius: 6px;
+  border: 1px solid rgba(51, 65, 85, 0.4);
+}
+
+.leaflet-control-attribution a {
+  color: #94a3b8 !important;
+}

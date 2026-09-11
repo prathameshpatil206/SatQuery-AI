@@ -1,9 +1,12 @@
 # Python
 __pycache__/
 *.py[cod]
+*.so
 
 # Virtual environment
 .venv/
+venv/
+ENV/
 
 # ML models / weights
 models/
@@ -17,13 +20,24 @@ models/
 *.tiff
 *.jp2
 
-# Local data
-data/
+# Local data & database
+data/uploads/
+*.sqlite3
+*.db
 sample/*
 !sample/cached_demo_results.json
 
 # Environment variables
 .env
+.env*.local
+
+# Node.js & Next.js
+node_modules/
+.next/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # Jupyter
 .ipynb_checkpoints/

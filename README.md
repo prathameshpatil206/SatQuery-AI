@@ -1,97 +1,101 @@
-# SatQuery-AI: Vision & Satellite Specialist Layer
+# SatQuery-AI: Agentic Multimodal Remote-Sensing Assistant
 
-SatQuery AI is an agentic vision-language assistant for multimodal remote-sensing and satellite image analysis through natural-language queries.
+SatQuery AI is an agentic vision-language assistant for multimodal remote-sensing and satellite image analysis through natural-language queries (Problem Statement: SIH26167).
 
-This package provides the **Vision / Satellite Specialist Layer** — an engine of specialized tools designed to be called by the SatQuery Agent / Router.
-
----
-
-## Architecture Overview
-
-```
-User Query
-    ↓
-SatQuery Agent / Router
-    ↓
-Select Specialist Tool:
-  ├── vqa(image, question)
-  ├── caption(image)
-  ├── ground(image, text)
-  ├── detect_change(img1, img2, prompt)
-  └── analyze_optical_sar(optical_image, sar_image, query)
-    ↓
-Structured Response:
-  Evidence + Answer + Confidence + Execution Trace
-```
+This integrated system unifies:
+1. **Frontend Geospatial Dashboard (Rohan)**: Next.js 14, Tailwind CSS (Slate-950 Dark Theme), Leaflet interactive map with GeoJSON overlays, split-screen UI, and live trace animations.
+2. **Backend & Agentic Router (Atharv)**: FastAPI application, Gemini intent classifier with deterministic keyword fallback, SQLite query history persistence, and JSON contract validation.
+3. **Vision & Satellite Specialist Layer (Prathamesh)**: Florence-2 zero-shot grounding, VQA, scene captioning, OpenCV CVA bi-temporal change detection, and optical+SAR paired cross-modal analysis.
 
 ---
 
-## Specialist Tool Interfaces
+## 🌟 Key Features
 
-All tools accept either **GeoTIFF file paths**, **standard benchmark images (PNG/JPEG)**, **NumPy arrays**, or **PIL Images**.
+- **Split-Screen Interactive Workspace**: 40% query controls & animated execution trace sidebar with 60% interactive Leaflet GIS map.
+- **Multimodal Remote Sensing**: Supports single-band, optical RGB, multi-spectral (Sentinel-2), SAR radar (Sentinel-1), and bi-temporal image pairs ($T_1$, $T_2$).
+- **Agentic Intent Routing**: Automatically classifies queries into Visual Grounding, Land-cover VQA, Scene Captioning, Bi-temporal Change Detection, or Optical+SAR cross-modal analysis.
+- **Projected GeoJSON Output**: Converts pixel bounding boxes and segmented features into projected GeoJSON `FeatureCollection` overlays for direct Leaflet rendering.
+- **SQLite Persistence**: Automatically records every query, spatial GeoJSON feature, execution trace, and confidence metric for auditability and replay.
+- **Venue-Ready Fail-Safe**: Try/except fallback to pre-computed cached responses (`sample/cached_demo_results.json`), guaranteeing zero 500 errors during live hackathon demos.
 
-```python
-from vision import (
-    vqa,
-    caption,
-    ground,
-    detect_change,
-    analyze_optical_sar,
-)
+---
 
-# 1. Single-Image Visual Question Answering (Mandatory)
-vqa_result = vqa("path/to/image.tif", "What type of land cover dominates this region?")
-print(vqa_result.answer)
-print(vqa_result.confidence)
-print(vqa_result.execution_trace)
+## 🏗️ Architecture
 
-# 2. Remote Sensing Captioning & Grounding
-caption_result = caption("path/to/image.tif")
-print(caption_result.caption)
-
-grounding_result = ground("path/to/image.tif", "water body")
-for box in grounding_result.boxes:
-    print(box.box_2d, box.geo_coordinates)
-
-# 3. Bi-Temporal Change Detection (Mandatory)
-change_result = detect_change("t1.tif", "t2.tif", prompt="Detect deforestation")
-print(change_result.summary)
-print(f"Area changed: {change_result.change_ratio * 100:.2f}%")
-print("Binary Mask:", change_result.change_mask.shape)
-print("Difference Heatmap:", change_result.difference_heatmap.shape)
-
-# 4. Optical + SAR Paired Analysis (Mandatory)
-optical_sar_result = analyze_optical_sar("optical.tif", "sar.tif", query="Assess flood impact")
-print(optical_sar_result.analysis_summary)
-print("Complementary Insights:", optical_sar_result.complementary_insights)
-print("Composite False-Color Image:", optical_sar_result.visual_evidence.preview_rgb.shape)
+```
+                       User Natural Language Query
+                                   │
+                                   ▼
+             ┌───────────────────────────────────────────┐
+             │         Next.js Split-Screen UI           │
+             │   (Query Form, File Uploads, Leaflet Map) │
+             └─────────────────────┬─────────────────────┘
+                                   │ POST /query (FormData)
+                                   ▼
+             ┌───────────────────────────────────────────┐
+             │       FastAPI Backend & Router            │
+             │  • Gemini / Deterministic Intent Routing  │
+             │  • SQLite Logging & Query History         │
+             └─────────────────────┬─────────────────────┘
+                                   │
+         ┌─────────────────────────┼─────────────────────────┐
+         ▼                         ▼                         ▼
+┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│ Single-Image VQA │     │   Bi-Temporal    │     │   Optical+SAR    │
+│  & Grounding     │     │ Change Detection │     │ Cross-Modal      │
+│  (Florence-2)    │     │   (CVA + Otsu)   │     │ (Dual-Sensor)    │
+└────────┬─────────┘     └────────┬─────────┘     └────────┬─────────┘
+         │                         │                         │
+         └─────────────────────────┼─────────────────────────┘
+                                   │
+                                   ▼
+             ┌───────────────────────────────────────────┐
+             │ Standardized JSON Contract & GeoJSON      │
+             │ (answer, confidence, spatial_data, trace) │
+             └───────────────────────────────────────────┘
 ```
 
 ---
 
-## Structured Output Contracts
+## 🚀 Quick Start
 
-All specialist functions return typed, structured dataclasses (`VQAResult`, `CaptionResult`, `GroundingResult`, `ChangeResult`, `OpticalSARResult`) that include:
-- **`answer` / `summary`**: Natural-language findings.
-- **`confidence`**: Float confidence score (0.0 to 1.0).
-- **`visual_evidence`**: Containing binary masks, continuous heatmaps, bounding boxes with lat/lon coordinates, and displayable 8-bit RGB previews.
-- **`execution_trace`**: Processing duration (ms), device used (`cuda` / `cpu`), model version, and spatial verification reports.
+### 1. Prerequisites
+- Python 3.10+ (using `.venv`)
+- Node.js 18+ and npm
+
+### 2. Backend Setup
+```bash
+# Activate virtual environment
+source .venv/bin/activate
+
+# Install backend dependencies (if needed)
+pip install fastapi uvicorn python-multipart
+
+# Start the FastAPI backend
+uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### 3. Frontend Setup
+```bash
+# Install frontend dependencies
+npm install
+
+# Start Next.js development server
+npm run dev
+```
+
+Visit **`http://localhost:3000`** in your browser.
+
+### 4. Or Run Both Concurrently
+```bash
+./start_services.sh
+```
 
 ---
 
-## Geospatial & Raster Engine
+## 🧪 Verification & Testing
 
-Located in `vision/geospatial.py`:
-- `read_geotiff(path)`: Reads GeoTIFF raster arrays and extracts CRS, bounds, and affine transform.
-- `pixel_to_geo(transform, x, y)` / `geo_to_pixel(transform, lon, lat)`: Bidirectional coordinate transformation.
-- `to_display_rgb(array, bands=(0,1,2), percentile_clip=(2, 98))`: 2%-98% percentile contrast stretching from 12-bit/16-bit multi-spectral or float SAR to normalized 8-bit RGB.
-- `detect_modality(array, metadata)`: Identifies `OPTICAL`, `MULTISPECTRAL`, or `SAR`.
-- `validate_spatial_pair(meta1, meta2)`: Verifies CRS alignment, bounding box intersection, and resolution matching.
-
----
-
-## Running Verification Tests
-
+Run the vision specialist unit tests:
 ```bash
 .venv/bin/python -m unittest discover -s tests -p "test_*.py" -v
 ```
