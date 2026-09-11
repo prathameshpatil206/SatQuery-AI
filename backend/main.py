@@ -23,6 +23,7 @@ from fastapi.responses import JSONResponse
 from backend.database import get_query_by_id, get_recent_queries, init_db, log_query
 from backend.router import (
     classify_intent,
+    create_scene_footprint_feature,
     load_cached_fallback,
     normalize_spatial_geojson,
 )
@@ -206,6 +207,19 @@ async def process_query(
             response_data["spatial_data"] = normalize_spatial_geojson(
                 response_data.get("spatial_data"), crs_str=crs_str
             )
+            # Add scene footprint polygon representing the entire .tif image
+            try:
+                active_img = primary_path or (img1 if detected_task == "change_detection" else (opt_img if detected_task == "optical_sar" else img))
+                if active_img:
+                    _, active_meta = read_geotiff(active_img)
+                    footprint_feat = create_scene_footprint_feature(active_meta, filename=Path(active_img).name)
+                    if footprint_feat:
+                        # Prepend footprint so detections draw on top
+                        features_list = response_data["spatial_data"].get("features", [])
+                        features_list.insert(0, footprint_feat)
+                        response_data["spatial_data"]["features"] = features_list
+            except Exception as fp_err:
+                logger.debug(f"Could not generate scene footprint: {fp_err}")
 
     except Exception as err:
         logger.warning(f"Specialist execution warning, utilizing fail-safe demo fallback: {err}")

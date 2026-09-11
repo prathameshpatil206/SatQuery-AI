@@ -203,3 +203,67 @@ def load_cached_fallback(task: str, query: str = "") -> Dict[str, Any]:
             "spatial_data": {"type": "FeatureCollection", "features": []},
             "execution_trace": [{"step": "offline_fallback", "status": "completed", "time_ms": 10.0}],
         }
+
+
+def create_scene_footprint_feature(
+    meta: Optional[Dict[str, Any]],
+    filename: str = "satellite_scene.tif",
+    anchor_center: Tuple[float, float] = (75.124, 15.385),
+) -> Optional[Dict[str, Any]]:
+    """
+    Generate a GeoJSON Polygon representing the entire spatial footprint of the .tif image.
+    """
+    if not meta:
+        return None
+
+    bounds = meta.get("bounds")
+    crs_str = meta.get("crs")
+    w = meta.get("width", 256)
+    h = meta.get("height", 256)
+
+    coords = None
+    if bounds:
+        left, bottom, right, top = bounds["left"], bounds["bottom"], bounds["right"], bounds["top"]
+        if crs_str and crs_str != "None":
+            try:
+                xs = [left, right, right, left, left]
+                ys = [bottom, bottom, top, top, bottom]
+                lons, lats = warp_transform(crs_str, "EPSG:4326", xs, ys)
+                coords = [[[round(lons[i], 6), round(lats[i], 6)] for i in range(5)]]
+            except Exception:
+                coords = None
+
+    if not coords:
+        half_w = max((w * 0.00008) / 2, 0.008)
+        half_h = max((h * 0.00008) / 2, 0.008)
+        min_lon = round(anchor_center[0] - half_w, 6)
+        max_lon = round(anchor_center[0] + half_w, 6)
+        min_lat = round(anchor_center[1] - half_h, 6)
+        max_lat = round(anchor_center[1] + half_h, 6)
+        coords = [[
+            [min_lon, min_lat],
+            [max_lon, min_lat],
+            [max_lon, max_lat],
+            [min_lon, max_lat],
+            [min_lon, min_lat],
+        ]]
+
+    return {
+        "type": "Feature",
+        "id": "scene-footprint-raster",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": coords,
+        },
+        "properties": {
+            "feature_type": "scene_footprint",
+            "name": f"🛰️ Scene Footprint: {filename}",
+            "label": "Full .tif Scene Footprint",
+            "classification": "Satellite GeoTIFF Extent",
+            "dimensions": f"{w} x {h} px",
+            "bands": meta.get("bands", 4),
+            "sensor": meta.get("format", "GeoTIFF"),
+            "crs": str(crs_str or "EPSG:4326"),
+            "region": "Scene AOI",
+        },
+    }
