@@ -99,3 +99,12 @@ body {
 .leaflet-control-attribution a {
   color: #94a3b8 !important;
 }
+
+.leaflet-control-attribution a:hover {
+  color: #60a5fa !important;
+}
+
+/* Watermark-free Dark Mode tile filter for OpenStreetMap */
+.dark-tile-layer {
+  filter: brightness(0.55) invert(1) contrast(2.8) hue-rotate(195deg) saturate(0.35) !important;
+}

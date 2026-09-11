@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useCallback } from "react";
+import React, { useEffect, useCallback, useState } from "react";
 import { MapContainer, TileLayer, GeoJSON, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -76,6 +76,9 @@ export interface MapProps {
 }
 
 export default function Map({ spatialData }: MapProps) {
+  // Basemap switcher state: default to high-res Satellite imagery (ESRI)
+  const [basemap, setBasemap] = useState<"satellite" | "dark">("satellite");
+
   // Hubli / Unkal Lake, Karnataka coordinates
   const defaultCenter: [number, number] = [15.3647, 75.124];
   const defaultZoom = 12;
@@ -140,12 +143,23 @@ export default function Map({ spatialData }: MapProps) {
         zoomControl={true}
         scrollWheelZoom={true}
       >
-        {/* CARTO Dark Matter vector tile layer */}
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-          maxZoom={19}
-        />
+        {/* Basemap: ESRI High-Resolution Satellite or Watermark-Free Dark Vector */}
+        {basemap === "satellite" ? (
+          <TileLayer
+            key="esri-satellite"
+            attribution='Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and GIS Community'
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+            maxZoom={19}
+          />
+        ) : (
+          <TileLayer
+            key="osm-dark-vector"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+            className="dark-tile-layer"
+            maxZoom={19}
+          />
+        )}
 
         {/* Spatial GeoJSON Vector Polygons */}
         {spatialData && spatialData.features && spatialData.features.length > 0 && (
@@ -162,13 +176,25 @@ export default function Map({ spatialData }: MapProps) {
         )}
 
         <MapRecenterControl />
+
+        {/* Top-Right Basemap Switcher Control */}
+        <div className="leaflet-top leaflet-right" style={{ pointerEvents: "auto", margin: "14px 170px 14px 14px" }}>
+          <button
+            type="button"
+            onClick={() => setBasemap(basemap === "satellite" ? "dark" : "satellite")}
+            className="bg-slate-900/90 hover:bg-slate-800 text-blue-400 border border-slate-700/80 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs font-mono shadow-2xl transition-all hover:border-blue-500 flex items-center gap-1.5 active:scale-95"
+            title="Toggle between Satellite Imagery and Dark Vector Map"
+          >
+            <span>{basemap === "satellite" ? "🛰️ Satellite Imagery" : "🗺️ Dark Vector Map"}</span>
+          </button>
+        </div>
       </MapContainer>
 
       {/* Floating HUD status overlay */}
       <div className="absolute bottom-5 left-5 pointer-events-none z-[1000] flex flex-col gap-1.5">
         <div className="bg-slate-900/85 backdrop-blur-md border border-slate-800 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-mono shadow-2xl flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span>CARTO Dark Matter (Hubli-Dharwad)</span>
+          <span>{basemap === "satellite" ? "ESRI World Satellite Feed" : "OpenStreetMap Dark Vector"}</span>
           <span className="text-slate-600">|</span>
           <span className="text-blue-400">
             {spatialData?.features?.length ? `${spatialData.features.length} GeoJSON Feature Active` : "Awaiting GeoJSON"}
