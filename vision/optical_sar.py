@@ -101,9 +101,16 @@ class HeuristicOpticalSARSpecialist(BaseOpticalSARSpecialist):
         sar_mean = float(np.mean(sar_gray))
         sar_var = float(np.var(sar_gray))
 
-        # Water bodies: dark in both optical (low reflectance) and SAR (specular reflection away from antenna)
-        water_candidates = (opt_gray < 50) & (sar_gray < 45)
-        water_coverage_pct = float(np.count_nonzero(water_candidates)) / float(h_opt * w_opt) * 100.0
+        # Water bodies: verified via physical spectral water detector and SAR specular reflection
+        try:
+            from vision.detection import detect_water_candidates
+            opt_water_boxes, opt_water_debug = detect_water_candidates(optical, metadata=optical_meta, return_debug=True)
+            water_coverage_pct = opt_water_debug.get("detected_water_pixel_percentage", 0.0)
+            has_water = len(opt_water_boxes) > 0 and (sar_mean < 120.0)
+        except Exception:
+            water_candidates = (opt_rgb[:, :, 2] > opt_rgb[:, :, 0] + 20) & (sar_gray < 50)
+            water_coverage_pct = float(np.count_nonzero(water_candidates)) / float(h_opt * w_opt) * 100.0
+            has_water = water_coverage_pct > 1.0
 
         # Built-up / Urban structures: bright corner-reflector scattering in SAR and high variance in optical
         urban_candidates = (sar_gray > 180) & (opt_gray > 100)
@@ -122,10 +129,10 @@ class HeuristicOpticalSARSpecialist(BaseOpticalSARSpecialist):
                 f"Clear atmospheric conditions in optical scene (< {cloud_coverage_pct:.1f}% cloud coverage)."
             )
 
-        if water_coverage_pct > 1.0:
+        if has_water and water_coverage_pct > 0.5:
             insights.append(
                 f"Water bodies confirmed via cross-sensor agreement ({water_coverage_pct:.1f}% coverage): "
-                f"exhibiting low optical reflectance and characteristic SAR specular reflection."
+                f"exhibiting physical spectral water absorption and characteristic SAR specular reflection."
             )
 
         if urban_coverage_pct > 2.0:

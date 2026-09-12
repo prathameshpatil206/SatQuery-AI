@@ -35,6 +35,9 @@ def read_geotiff(image_path: Union[str, Path]) -> Tuple[np.ndarray, Dict[str, An
             },
             "dtypes": src.dtypes,
             "nodata": src.nodatavals,
+            "descriptions": list(src.descriptions) if src.descriptions else None,
+            "colorinterp": [ci.name for ci in src.colorinterp] if src.colorinterp else None,
+            "tags": dict(src.tags()) if hasattr(src, "tags") else {},
             "is_geospatial": src.crs is not None,
         }
 
@@ -98,6 +101,9 @@ def load_image(
                     },
                     "dtypes": src.dtypes,
                     "nodata": src.nodatavals,
+                    "descriptions": list(src.descriptions) if src.descriptions else None,
+                    "colorinterp": [ci.name for ci in src.colorinterp] if src.colorinterp else None,
+                    "tags": dict(src.tags()) if hasattr(src, "tags") else {},
                     "is_geospatial": src.crs is not None,
                 }
                 return image, metadata
@@ -249,6 +255,171 @@ def to_display_rgb(
 
     rgb = np.stack(rgb_channels, axis=-1)  # Shape (H, W, 3)
     return rgb
+
+
+def get_spectral_band_mapping(
+    image: Union[np.ndarray, Tuple[int, ...]],
+    metadata: Optional[Dict[str, Any]] = None,
+    custom_mapping: Optional[Dict[str, int]] = None,
+) -> Dict[str, Any]:
+    """
+    Determine zero-based band indices for spectral calculations (Green, NIR, Red, Blue).
+
+    Inspects:
+      1. Explicit `custom_mapping` parameter or `metadata.get("band_mapping")`.
+      2. Band descriptions (e.g., 'Green', 'NIR', 'B3', 'B8', 'B4').
+      3. Color interpretation tags (e.g., 'green', 'red', 'blue').
+      4. Standard satellite defaults (4-band: Red=0, Green=1, Blue=2, NIR=3).
+      5. Standard 3-band RGB (Red=0, Green=1, Blue=2, NIR=None).
+
+    Returns:
+        Dict containing:
+          - green_band_index: Optional[int]
+          - nir_band_index: Optional[int]
+          - red_band_index: Optional[int]
+          - blue_band_index: Optional[int]
+          - method: str
+          - is_confident: bool
+          - warnings: List[str]
+    """
+    # Determine band count
+    if isinstance(image, tuple):
+        band_count = image[0] if len(image) == 3 else 1
+    elif hasattr(image, "shape"):
+        if image.ndim == 2:
+            band_count = 1
+        elif image.ndim == 3:
+            if image.shape[2] <= 16 and image.shape[0] > 16:
+                band_count = image.shape[2]
+            else:
+                band_count = image.shape[0]
+        else:
+            band_count = 1
+    else:
+        band_count = 4
+
+    result: Dict[str, Any] = {
+        "green_band_index": None,
+        "nir_band_index": None,
+        "red_band_index": None,
+        "blue_band_index": None,
+        "method": "unknown",
+        "is_confident": False,
+        "warnings": [],
+    }
+
+    # 1. Custom mapping check (direct argument or in metadata)
+    user_cfg = custom_mapping or (metadata.get("band_mapping") if metadata else None)
+    if user_cfg and isinstance(user_cfg, dict):
+        g = user_cfg.get("green", user_cfg.get("green_band_index"))
+        n = user_cfg.get("nir", user_cfg.get("nir_band_index"))
+        r = user_cfg.get("red", user_cfg.get("red_band_index"))
+        b = user_cfg.get("blue", user_cfg.get("blue_band_index"))
+
+        valid = True
+        for name, idx in [("green", g), ("nir", n), ("red", r), ("blue", b)]:
+            if idx is not None and (not isinstance(idx, int) or idx < 0 or idx >= band_count):
+                result["warnings"].append(f"Custom mapping index for {name} ({idx}) out of bounds (0-{band_count-1}).")
+                valid = False
+
+        if valid and (g is not None or n is not None):
+            result["green_band_index"] = g
+            result["nir_band_index"] = n
+            result["red_band_index"] = r
+            result["blue_band_index"] = b
+            result["method"] = "custom_mapping"
+            result["is_confident"] = True
+            return result
+
+    # 2. Inspect descriptions in metadata
+    descriptions = metadata.get("descriptions") if metadata else None
+    if descriptions and isinstance(descriptions, (list, tuple)):
+        desc_lower = [str(d).lower().strip() if d is not None else "" for d in descriptions]
+        matched_any = False
+
+        for i, d in enumerate(desc_lower):
+            if i >= band_count:
+                break
+            # Match NIR
+            if any(k in d for k in ["nir", "near infrared", "near_infrared", "narrow nir", "b08", "b8", "b5"]):
+                if result["nir_band_index"] is None:
+                    result["nir_band_index"] = i
+                    matched_any = True
+            # Match Green
+            elif any(k in d for k in ["green", "b03", "b3"]):
+                if result["green_band_index"] is None:
+                    result["green_band_index"] = i
+                    matched_any = True
+            # Match Red
+            elif any(k in d for k in ["red", "b04", "b4"]):
+                if result["red_band_index"] is None:
+                    result["red_band_index"] = i
+                    matched_any = True
+            # Match Blue
+            elif any(k in d for k in ["blue", "b02", "b2"]):
+                if result["blue_band_index"] is None:
+                    result["blue_band_index"] = i
+                    matched_any = True
+
+        if result["green_band_index"] is not None and result["nir_band_index"] is not None:
+            result["method"] = "metadata_descriptions"
+            result["is_confident"] = True
+            return result
+        elif matched_any:
+            result["warnings"].append("Partial band match in metadata descriptions; some spectral bands unresolved.")
+
+    # 3. Inspect color interpretation in metadata
+    colorinterp = metadata.get("colorinterp") if metadata else None
+    if colorinterp and isinstance(colorinterp, (list, tuple)):
+        ci_lower = [str(c).lower().strip() for c in colorinterp]
+        for i, c in enumerate(ci_lower):
+            if i >= band_count:
+                break
+            if "green" in c and result["green_band_index"] is None:
+                result["green_band_index"] = i
+            elif "red" in c and result["red_band_index"] is None:
+                result["red_band_index"] = i
+            elif "blue" in c and result["blue_band_index"] is None:
+                result["blue_band_index"] = i
+
+    # 4. Standard 4-band package default (PlanetScope, NAIP, standard synthetic 4-band)
+    if band_count >= 4:
+        # If Green or NIR wasn't explicitly found, apply safe standard order
+        if result["green_band_index"] is None:
+            result["green_band_index"] = 1
+        if result["nir_band_index"] is None:
+            result["nir_band_index"] = 3
+        if result["red_band_index"] is None:
+            result["red_band_index"] = 0
+        if result["blue_band_index"] is None:
+            result["blue_band_index"] = 2
+
+        result["method"] = "standard_4band_default"
+        result["is_confident"] = True
+        result["warnings"].append(
+            f"Using standard 4-band mapping (Red=0, Green=1, Blue=2, NIR=3) for {band_count}-band raster."
+        )
+        return result
+
+    # 5. Standard 3-band RGB
+    if band_count == 3:
+        if result["red_band_index"] is None:
+            result["red_band_index"] = 0
+        if result["green_band_index"] is None:
+            result["green_band_index"] = 1
+        if result["blue_band_index"] is None:
+            result["blue_band_index"] = 2
+        result["nir_band_index"] = None
+        result["method"] = "standard_rgb"
+        result["is_confident"] = False
+        result["warnings"].append("3-band RGB raster: NIR spectral band is unavailable.")
+        return result
+
+    # 6. Single-band or dual-band (e.g. Grayscale or SAR)
+    result["method"] = "insufficient_bands"
+    result["is_confident"] = False
+    result["warnings"].append(f"Image has only {band_count} band(s); spectral water indexing is not supported.")
+    return result
 
 
 def detect_modality(image_array: np.ndarray, metadata: Optional[Dict[str, Any]] = None) -> Modality:
